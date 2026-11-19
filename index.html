@@ -170,7 +170,6 @@ footer{text-align:center;font-size:.78rem;color:var(--muted);padding-top:24px;fo
 // Paste your Google Apps Script Web App URL (ends in /exec). See SETUP-GUIDE.md.
 // Leave empty for demo mode (nothing is saved).
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc0o4TxrPjXpHnQkOqFJtvrEL5Nvo9hKYiJamBd4E8IjoiB01oiAJDsKTU_xTD6YSmaA/exec";
-const COUPON_CODE = "EYSA10";
 const SECONDS_PER_QUESTION = 120;
 // 10 questions. "answer" = position of the correct option, counting from 0.
 const QUESTIONS = [
@@ -246,57 +245,38 @@ function updateClock(){
 function advance(){
   if (moving) return; moving = true;
   clearInterval(tick);
-  const item = QUESTIONS[idx];
   const sel = document.querySelector('input[name="opt"]:checked');
-  const choice = sel ? +sel.value : null;
-  answers.push({ question:item.q, answer: choice === null ? "" : item.options[choice],
-    correctAnswer: item.options[item.answer], level: item.level || "", explanation: item.explain || "", correct: choice === item.answer });
+  answers.push({ selectedIndex: sel ? Number(sel.value) : -1 });
   idx++;
   if (idx < QUESTIONS.length) renderQ(); else finish();
 }
 $("next").addEventListener("click", advance);
 
 function finish(){
-  const score = answers.filter(a => a.correct).length;
-  const perfect = score === QUESTIONS.length;
+  clearInterval(tick);
+
+  // This score is only for display. Apps Script independently checks the answers.
+  const score = answers.reduce((sum, a, i) =>
+    sum + (a.selectedIndex === QUESTIONS[i].answer ? 1 : 0), 0);
   const first = person.name.split(" ")[0];
-  $("ty-title").textContent = perfect ? `Stellar, ${first}! All correct.` : `Thank you, ${first}!`;
+  $("ty-title").textContent = `Thank you, ${first}!`;
   $("ty-score").innerHTML = `${score}<small> / ${QUESTIONS.length}</small>`;
-  $("ty-msg").textContent = perfect
-    ? "You answered every question correctly, so your 10% discount is unlocked."
-    : "You need all 10 correct to unlock the 10% coupon. Thanks for taking part. We'll keep you posted on new EYSA courses and eBooks.";
-  $("coupon").hidden = !perfect;
-  $("code").textContent = COUPON_CODE;
+  $("coupon").hidden = true;
+  $("code").textContent = "";
+  $("ty-msg").textContent = "Your result was submitted. If you answered every question correctly, the reward will be sent to your email.";
+  $("ty-save").textContent = "Submitting your answers…";
   show("v-thanks");
 
-  const payload = { ...person, score, total: QUESTIONS.length, couponGiven: perfect,
-    coupon: perfect ? COUPON_CODE : "", timeTaken: Math.round((Date.now()-startedAt)/1000), answers };
-  const okMsg = perfect ? "Your responses have been recorded. Please note down your coupon code." : "Your responses have been recorded.";
-  const failMsg = "We couldn't save your responses because of a connection problem. Your result above still stands.";
-  // Hosted by Google Apps Script: save straight to the sheet.
-  if (window.google && google.script && google.script.run){
-    $("ty-save").textContent = "Saving your responses…";
-    google.script.run
-      .withSuccessHandler(r => $("ty-save").textContent = (r && r.ok === false) ? failMsg : okMsg)
-      .withFailureHandler(() => $("ty-save").textContent = failMsg)
-      .saveResponse(payload);
-    return;
-  }
-  if (!SCRIPT_URL){
-    $("ty-save").textContent = "Demo mode: responses are not saved yet. Add the Google Sheet link (SCRIPT_URL) to start recording them.";
-    return;
-  }
-  $("ty-save").textContent = "Saving your responses…";
+  const payload = { ...person, consent: $("consent").checked, answers,
+    timeTaken: Math.round((Date.now()-startedAt)/1000) };
+  $("ty-save").textContent = "Submitting your answers…";
   fetch(SCRIPT_URL, { method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(payload) })
-    .then(() => $("ty-save").textContent = okMsg)
-    .catch(() => $("ty-save").textContent = failMsg);
+    .then(() => $("ty-save").textContent = "Submitted. Eligible participants will receive the reward by email.")
+    .catch(() => $("ty-save").textContent = "We couldn't submit your result. Please try again.");
 }
 
-$("copy").addEventListener("click", () => {
-  const done = () => { $("copy").textContent = "Copied"; setTimeout(() => $("copy").textContent = "Copy code", 1800); };
-  try { navigator.clipboard.writeText(COUPON_CODE).then(done, selectCode); } catch(e){ selectCode(); }
-});
-function selectCode(){ const r = document.createRange(); r.selectNodeContents($("code")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+
+
 </script>
 
 </body>
